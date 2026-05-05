@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Steam Controller",
+    "app_id": 4165870,
+    "package_id": 1558609,
+    "url": "https://store.steampowered.com/hardware/steamcontroller"
+  },
+  {
+    "name": "Steam Frame (VR Headset)",
+    "app_id": 4165890,
+    "package_id": null,
+    "url": "https://store.steampowered.com/app/4165890"
+  },
+  {
+    "name": "Steam Machine (Console)",
+    "app_id": 4165910,
+    "package_id": null,
+    "url": "https://store.steampowered.com/app/4165910"
+  }
+]
