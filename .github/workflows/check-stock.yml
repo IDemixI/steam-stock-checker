@@ -1,0 +1,75 @@
+name: Steam Controller Stock Check
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check stock via Steam API
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          STEAM_URL: "https://store.steampowered.com/hardware/steamcontroller"
+          # Protobuf-encoded request for package 1558609 (Steam Controller), language=english, country=GB
+          # Response field 3 = availability: 0=out of stock, 1=in stock
+          PROTO_INPUT: "CNGQXxINCgdlbmdsaXNoGgJHQg=="
+        run: |
+          TMPFILE=$(mktemp)
+          trap "rm -f $TMPFILE" EXIT
+
+          curl -s -o "$TMPFILE" \
+            'https://api.steampowered.com/IStoreBrowseService/GetHardwareItems/v1?origin=https%3A%2F%2Fstore.steampowered.com&input_protobuf_encoded='"$PROTO_INPUT" \
+            -H 'Origin: https://store.steampowered.com' \
+            -H 'Referer: https://store.steampowered.com/' \
+            -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36' \
+            --max-time 15
+
+          if [ ! -s "$TMPFILE" ]; then
+            echo "Failed to fetch API"
+            exit 0
+          fi
+
+          available=$(python3 -c "
+          import sys
+          with open(sys.argv[1], 'rb') as f:
+              data = f.read()
+          def decode_varint(data, pos):
+              result = shift = 0
+              while True:
+                  b = data[pos]; result |= (b & 0x7f) << shift; pos += 1
+                  if not (b & 0x80): break
+                  shift += 7
+              return result, pos
+          pos = 0
+          tag, pos = decode_varint(data, pos)
+          length, pos = decode_varint(data, pos)
+          inner = data[pos:pos+length]
+          p = 0
+          fields = {}
+          while p < len(inner):
+              t, p = decode_varint(inner, p)
+              fn, wt = t >> 3, t & 7
+              if wt == 0:
+                  v, p = decode_varint(inner, p)
+                  fields[fn] = v
+              else: break
+          print(fields.get(3, -1))
+          " "$TMPFILE")
+
+          echo "Availability field: $available"
+
+          if [ "$available" = "1" ]; then
+            echo "IN STOCK - sending notification!"
+            curl -s \
+              -H "Title: Steam Controller IN STOCK!" \
+              -H "Priority: urgent" \
+              -H "Tags: video_game" \
+              -H "Click: $STEAM_URL" \
+              -d "The Steam Controller is available for purchase! $STEAM_URL" \
+              "https://ntfy.sh/$NTFY_TOPIC"
+          else
+            echo "Out of stock (field 3 = $available)"
+          fi
